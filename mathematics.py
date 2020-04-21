@@ -8,7 +8,7 @@ def synchronized_intervals(intervals_list):
     interval_indices = [-1,] * len(intervals_list)
     intervals_current = [None,] * len(intervals_list)
 
-    intervals_all = list(chain.from_iterable(intervals_list))
+    intervals_all = chain.from_iterable(intervals_list)
     intervals_all = sorted(list(set(chain.from_iterable(intervals_all))))
 
     for i, index in enumerate(interval_indices):
