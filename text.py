@@ -1,4 +1,5 @@
 import re
+import codecs
 from itertools import chain
 
 import numpy as np
@@ -49,7 +50,7 @@ class SplittedComponents(str):
     def update_text(self, text):
         self.__text = text
         components = self.RE_SPACES_SPLITTING.findall(text)
-        components = np.array([c for c in chain.from_iterable(components) if c])
+        components = [c for c in chain.from_iterable(components) if c]
         self.__components = components
         self.__intervals = self.splitters_to_interval([len(c) for c in components])
         self.__empty = np.array([True if self.RE_EMPTY.match(c) else False for c in components], dtype=bool)
@@ -73,9 +74,10 @@ class SplittedComponents(str):
         return self.__components
 
     @property
-    def nonempty_splitters_right(self):
+    def nonempty_splitters(self):
         # Backward compatibility for legacy codes
-        splitters = [s for i, s in enumerate(self.splitters) if not self.__empty[i]]
+        splitters = [interval[1] for i, interval in 
+            enumerate(self.__intervals) if not self.__empty[i]]
         return splitters
 
     @property
@@ -133,14 +135,13 @@ class SplittedComponents(str):
         '''
         #residue = 0. # TODO Handle width ratio that can't be divided
         if self.__text:
-            full_chars = count_full_chars(self.__text)
             for i, c in enumerate(self.__components):
                 if not c.strip():
                     spaces = 0
                     spaces = len(c)
                     try:
-                        full_chars = count_full_chars(self.__components[i+1])
-                        padding = full_chars
+                        half, full = count_width_chars(self.__components[i+1])
+                        padding = full
                         spaces += padding
                     except IndexError:
                         pass
