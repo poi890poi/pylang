@@ -1,6 +1,7 @@
 import re
 import codecs
 from itertools import chain
+from pprint import pprint
 
 import numpy as np
 
@@ -30,6 +31,28 @@ def count_width_chars(text):
     return half_width, full_width
 
 
+class CustomCharset():
+    '''
+    This is for two-bytes codecs only, namely big5, cp950, hkscs
+    '''
+
+    def __init__(self, codec, custom_chars):
+        self.__codec = codec
+        self.__custom_chars = custom_chars
+        codecs.register_error('decode_custom_chars', self.decode_custom_chars)
+        codecs.register_error('register_unknown', self.register_unknown)
+
+    def register_unknown(self, e):
+        pass
+
+    def decode_custom_chars(self, e):
+        try:
+            return self.__custom_chars[e.object[e.start:e.end+1]], e.end+1
+        except KeyError:
+            e.object.decode(self.__codec, errors='register_unknown')
+            return '�', e.end+1
+
+
 class SplittedComponents(str):
     '''
     Split text by spaces. Return intervals and splitted components.
@@ -41,6 +64,9 @@ class SplittedComponents(str):
     RE_CODE = re.compile('([A-Z][A-Z\\d]+)')
     RE_DATE = re.compile('(\\d+年)[^\\d]*(\\d+月)')
 
+    RE_SPACES_SPLITTING_BYTES = re.compile(b'([ ]*)([^ ]+)([ ]*)')
+    RE_EMPTY_BYTES = re.compile(b'^[ ]*$')
+
     def __new__(cls, text, *args, **kwargs):
         return super(SplittedComponents, cls).__new__(cls, text)
 
@@ -49,12 +75,19 @@ class SplittedComponents(str):
 
     def update_text(self, text):
         self.__text = text
-        components = self.RE_SPACES_SPLITTING.findall(text)
-        components = [c for c in chain.from_iterable(components) if c]
-        self.__components = np.array(components, dtype=str)
+        try:
+            components = self.RE_SPACES_SPLITTING.findall(text)
+            components = [c for c in chain.from_iterable(components) if c]
+            self.__components = np.array(components, dtype=str)
+            self.__empty = np.array([True if self.RE_EMPTY.match(c) 
+                else False for c in components], dtype=bool)
+        except TypeError:
+            components = self.RE_SPACES_SPLITTING_BYTES.findall(text)
+            components = [c for c in chain.from_iterable(components) if c]
+            self.__components = np.array(components, dtype=bytes)
+            self.__empty = np.array([True if self.RE_EMPTY_BYTES.match(c) 
+                else False for c in components], dtype=bool)
         self.__intervals = self.splitters_to_interval([len(c) for c in components])
-        self.__empty = np.array([True if self.RE_EMPTY.match(c) else False for c in components], dtype=bool)
-        print(self.__components, self.__intervals, self.__empty)
 
     @classmethod
     def __is_empty(cls, component):
@@ -77,6 +110,13 @@ class SplittedComponents(str):
     def nonempty_splitters(self):
         # Backward compatibility for legacy codes
         splitters = [interval[1] for i, interval in 
+            enumerate(self.__intervals) if not self.__empty[i]]
+        return splitters
+
+    @property
+    def nonempty_splitters_left(self):
+        # Backward compatibility for legacy codes
+        splitters = [interval[0] for i, interval in 
             enumerate(self.__intervals) if not self.__empty[i]]
         return splitters
 
@@ -148,6 +188,43 @@ class SplittedComponents(str):
                         pass
                     components[i] = ' ' * spaces
             self.update_text(''.join(components))
+
+    def pad_spaces_right(self):
+        '''
+        Align half-width and full-width chars by adding spaces to the left 
+        of components. Assume that full-width is twice the width of half-width
+        chars.
+        '''
+        #residue = 0. # TODO Handle width ratio that can't be divided
+        components = self.__components.tolist()
+
+        # spaces_padded is for processing binary data without decoding it.
+        # TODO Make it more generic and easier to use.
+        spaces_padded = [(0, None)] * len(components)
+
+        if self.__text:
+            for i, c in enumerate(self.__components):
+                if not c.strip():
+                    spaces = 0
+                    spaces = len(c)
+                    try:
+                        half, full = count_width_chars(self.__components[i-1])
+                        padding = full
+                        spaces += padding
+                    except IndexError:
+                        pass
+                    components[i] = ' ' * spaces
+
+                    # Convert decoded positions to binary positions
+                    # TODO Make it more generic and easier to use.
+                    t = self.text[:self.__intervals[i][0]]
+                    half, full = count_width_chars(t)
+                    self.__intervals[i] += full
+                    spaces_padded[i] = (spaces, self.__intervals[i].tolist())
+
+            self.update_text(''.join(components))
+
+        return spaces_padded
 
 
 if __name__ == '__main__':
