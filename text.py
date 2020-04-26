@@ -51,7 +51,7 @@ class SplittedComponents(str):
         self.__text = text
         components = self.RE_SPACES_SPLITTING.findall(text)
         components = [c for c in chain.from_iterable(components) if c]
-        self.__components = components
+        self.__components = np.array(components, dtype=str)
         self.__intervals = self.splitters_to_interval([len(c) for c in components])
         self.__empty = np.array([True if self.RE_EMPTY.match(c) else False for c in components], dtype=bool)
         print(self.__components, self.__intervals, self.__empty)
@@ -134,6 +134,7 @@ class SplittedComponents(str):
         chars.
         '''
         #residue = 0. # TODO Handle width ratio that can't be divided
+        components = self.__components.tolist()
         if self.__text:
             for i, c in enumerate(self.__components):
                 if not c.strip():
@@ -145,8 +146,8 @@ class SplittedComponents(str):
                         spaces += padding
                     except IndexError:
                         pass
-                    self.__components[i] = ' ' * spaces
-            self.update_text(''.join(self.__components))
+                    components[i] = ' ' * spaces
+            self.update_text(''.join(components))
 
 
 if __name__ == '__main__':
